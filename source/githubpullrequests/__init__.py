@@ -53,8 +53,6 @@ log = getLogger( 127, __name__ )
 
 
 def main():
-    log( 1, "Entering on main(1) " )
-
     github_token = os.environ.get( 'GITHUBPULLREQUESTS_TOKEN', "" )
     gitmodules_file = ''
 
@@ -73,11 +71,13 @@ def main():
     if argumentsNamespace.token:
         github_token = argumentsNamespace.token
 
-    elif argumentsNamespace.file:
+    if argumentsNamespace.file:
         gitmodules_file = argumentsNamespace.file
 
     else:
+        log.clean( "Error: Missing required command line argument `-f/--file`" )
         argumentParser.print_help()
+        return
 
     log.newline()
     parse_gitmodules( gitmodules_file, github_token )
