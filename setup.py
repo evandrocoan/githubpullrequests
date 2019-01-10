@@ -62,6 +62,7 @@ from setuptools import setup
 version = '0.1.0'
 
 install_requires=[
+    'six',
     'debug_tools',
     'PyGithub',
 ]

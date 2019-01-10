@@ -42,7 +42,12 @@ import re
 
 import github
 import argparse
-import configparser
+
+try:
+    import configparser
+
+except( ImportError, ValueError ):
+    from six.moves import configparser
 
 from debug_tools import getLogger
 from debug_tools.utilities import wrap_text
@@ -92,7 +97,7 @@ def parse_gitmodules(gitmodules_file, github_token):
     general_settings_configs = configparser.RawConfigParser()
 
     if os.path.exists( github_token ):
-        with open( github_token, 'r', newline='\n', encoding='utf-8' ) as input_file:
+        with open( github_token, 'r', ) as input_file:
             github_token = input_file.read()
 
     github_token = github_token.strip()
