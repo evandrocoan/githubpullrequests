@@ -89,6 +89,12 @@ def main():
 def parse_gitmodules(gitmodules_file, github_token):
     general_settings_configs = configparser.RawConfigParser()
 
+    if os.path.exists( github_token ):
+        with open( github_token, 'r', newline='\n', encoding='utf-8' ) as input_file:
+            github_token = input_file.read()
+
+    github_token = github_token.strip()
+
     # using username and password
     # github_api = github.Github("user", "password")
 
