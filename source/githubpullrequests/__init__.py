@@ -125,6 +125,7 @@ class PullRequester(object):
         self.skip_reasons = [
             'No commits between',
             'A pull request already exists',
+            'Repository was archived',
         ]
 
         for reason in self.skip_reasons:
@@ -242,7 +243,7 @@ class PullRequester(object):
                 fork_pullrequest.add_to_labels( "backstroke" )
 
             except github.GithubException as error:
-                error = str( error )
+                error = "%s, %s" % (section, str( error ) )
                 log( 1, 'Skipping `%s` due `%s`', section, error )
 
                 for reason in self.skip_reasons:
