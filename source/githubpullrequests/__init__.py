@@ -84,150 +84,157 @@ def main():
         argumentParser.print_help()
         return
 
+    pull_requester = PullRequester( github_token )
     for file in gitmodules_files:
+        pull_requester.parse_gitmodules( file )
+
+    pull_requester.publish_report()
+
+
+class PullRequester(object):
+
+    def __init__(self, github_token):
+        super(PullRequester, self).__init__()
+
+        if os.path.exists( github_token ):
+            with open( github_token, 'r', ) as input_file:
+                github_token = input_file.read()
+
+        self.init_report()
+        self.github_token = github_token.strip()
+
+    def init_report(self):
+        self.repositories_results = {}
+        self.skip_reasons = [
+            'No commits between',
+            'A pull request already exists',
+        ]
+
+        for reason in self.skip_reasons:
+            self.repositories_results[reason] = []
+
+        self.repositories_results['Unknown Reason'] = []
+        self.repositories_results['Successfully Created'] = []
+
+    def parse_gitmodules(self, gitmodules_file):
         log.newline()
-        log( 1, 'file', file )
-        parse_gitmodules( file, github_token )
+        log( 1, 'gitmodules_file', gitmodules_file )
 
-    log.newline()
-    log( 1, "Finished!" )
+        # using username and password
+        # github_api = github.Github("user", "password")
 
+        # or using an access token
+        github_api = github.Github( self.github_token )
 
-def parse_gitmodules(gitmodules_file, github_token):
-    general_settings_configs = configparser.RawConfigParser()
+        # Github Enterprise with custom hostname
+        # github_api = github.Github(base_url="https://{hostname}/api/v3", login_or_token="access_token")
 
-    if os.path.exists( github_token ):
-        with open( github_token, 'r', ) as input_file:
-            github_token = input_file.read()
+        # https://stackoverflow.com/questions/45415684/how-to-stop-tabs-on-python-2-7-rawconfigparser-throwing-parsingerror/
+        with open( gitmodules_file ) as fakeFile:
+            # https://stackoverflow.com/questions/22316333/how-can-i-resolve-typeerror-with-stringio-in-python-2-7
+            fakefile = io.StringIO( fakeFile.read().replace( u"\t", u"" ) )
 
-    github_token = github_token.strip()
+        general_settings_configs = configparser.RawConfigParser()
+        general_settings_configs._read( fakefile, gitmodules_file )
 
-    # using username and password
-    # github_api = github.Github("user", "password")
+        request_index = 0
+        successful_resquests = 0
 
-    # or using an access token
-    github_api = github.Github( github_token )
+        sections       = general_settings_configs.sections()
+        sections_count = len( sections )
 
-    # Github Enterprise with custom hostname
-    # github_api = github.Github(base_url="https://{hostname}/api/v3", login_or_token="access_token")
+        for section, pi in sequence_timer( sections, info_frequency=0 ):
+            request_index += 1
+            progress       = progress_info( pi )
 
-    # https://stackoverflow.com/questions/45415684/how-to-stop-tabs-on-python-2-7-rawconfigparser-throwing-parsingerror/
-    with open( gitmodules_file ) as fakeFile:
-        # https://stackoverflow.com/questions/22316333/how-can-i-resolve-typeerror-with-stringio-in-python-2-7
-        fakefile = io.StringIO( fakeFile.read().replace( u"\t", u"" ) )
+            # # For quick testing
+            # if request_index > 3:
+            #     break
 
-    log( 1, gitmodules_file )
-    general_settings_configs._read( fakefile, gitmodules_file )
+            log.newline()
+            log( 1, "{:s}, {:3d}({:d}) of {:d}... {:s}".format(
+                    progress, request_index, successful_resquests, sections_count, section ) )
 
-    request_index = 0
-    successful_resquests = 0
+            downstream = get_section_option( section, "url", general_settings_configs )
+            upstream = get_section_option( section, "upstream", general_settings_configs )
 
-    sections       = general_settings_configs.sections()
-    sections_count = len( sections )
+            upstream_user, upstream_repository = parse_github( upstream )
+            downstream_user, downstream_repository = parse_github( downstream )
 
-    repositories_results = {}
-    skip_reasons = [
-        'No commits between',
-        'A pull request already exists',
-    ]
+            if not upstream_user or not upstream_repository:
+                log( 1, "Skipping %s because the upstream is not defined...", section )
+                continue
 
-    for reason in skip_reasons:
-        repositories_results[reason] = []
+            branches = get_section_option( section, "branches", general_settings_configs )
+            local_branch, upstream_branch = parser_branches( branches )
 
-    repositories_results['Unknown Reason'] = []
-    repositories_results['Successfully Created'] = []
+            log( 1, branches )
+            log( 1, 'upstream', upstream )
+            log( 1, 'downstream', downstream )
 
-    for section, pi in sequence_timer( sections, info_frequency=0 ):
-        request_index += 1
-        progress       = progress_info( pi )
+            if not local_branch or not upstream_branch:
+                log.newline( count=3 )
+                log( 1, "ERROR! Invalid branches `%s`", branches )
 
-        # # For quick testing
-        # if request_index > 3:
-        #     break
+            if not downstream_user or not downstream_repository:
+                log.newline( count=3 )
+                log( 1, "ERROR! Invalid downstream `%s`", downstream )
 
+            fork_user = github_api.get_user( downstream_user )
+            fork_repo = fork_user.get_repo( downstream_repository )
+            full_upstream_name = "{}/{}@{}".format( upstream_user, upstream_repository, upstream_branch )
+
+            try:
+                fork_pullrequest = fork_repo.create_pull(
+                        "Update from {}".format( full_upstream_name ),
+                        wrap_text( r"""
+                            The upstream repository `{}` has some new changes that aren't in this fork.
+                            So, here they are, ready to be merged!
+
+                            This Pull Request was created programmatically by the
+                            [githubpullrequests](https://github.com/evandrocoan/githubpullrequests).
+                        """.format( full_upstream_name ), single_lines=True, ),
+                        local_branch,
+                        '{}:{}'.format( upstream_user, upstream_branch ),
+                        False
+                    )
+
+                # Then play with your Github objects
+                successful_resquests += 1
+                log( 1, 'Successfully Created:', fork_pullrequest )
+
+                self.repositories_results['Successfully Created'].append(section)
+                fork_pullrequest.add_to_labels( "backstroke" )
+
+            except github.GithubException as error:
+                error = str( error )
+                log( 1, 'Skipping `%s` due `%s`', section, error )
+
+                for reason in self.skip_reasons:
+                    if reason in error:
+                        self.repositories_results[reason].append(section)
+                        break
+
+                else:
+                    self.repositories_results['Unknown Reason'].append(error)
+
+    def publish_report(self):
         log.newline()
-        log( 1, "{:s}, {:3d}({:d}) of {:d}... {:s}".format(
-                progress, request_index, successful_resquests, sections_count, section ) )
+        log.clean('Repositories results:')
 
-        downstream = get_section_option( section, "url", general_settings_configs )
-        upstream = get_section_option( section, "upstream", general_settings_configs )
+        for key, values in self.repositories_results.items():
+            log.newline()
+            log.clean('   ', key)
 
-        upstream_user, upstream_repository = parse_github( upstream )
-        downstream_user, downstream_repository = parse_github( downstream )
+            if values:
+                index = 0
 
-        if not upstream_user or not upstream_repository:
-            log( 1, "Skipping %s because the upstream is not defined...", section )
-            continue
-
-        branches = get_section_option( section, "branches", general_settings_configs )
-        local_branch, upstream_branch = parser_branches( branches )
-
-        log( 1, branches )
-        log( 1, 'upstream', upstream )
-        log( 1, 'downstream', downstream )
-
-        if not local_branch or not upstream_branch:
-            log.newline( count=3 )
-            log( 1, "ERROR! Invalid branches `%s`", branches )
-
-        if not downstream_user or not downstream_repository:
-            log.newline( count=3 )
-            log( 1, "ERROR! Invalid downstream `%s`", downstream )
-
-        fork_user = github_api.get_user( downstream_user )
-        fork_repo = fork_user.get_repo( downstream_repository )
-        full_upstream_name = "{}/{}@{}".format( upstream_user, upstream_repository, upstream_branch )
-
-        try:
-            fork_pullrequest = fork_repo.create_pull(
-                    "Update from {}".format( full_upstream_name ),
-                    wrap_text( r"""
-                        The upstream repository `{}` has some new changes that aren't in this fork.
-                        So, here they are, ready to be merged!
-
-                        This Pull Request was created programmatically by the
-                        [githubpullrequests](https://github.com/evandrocoan/githubpullrequests).
-                    """.format( full_upstream_name ), single_lines=True, ),
-                    local_branch,
-                    '{}:{}'.format( upstream_user, upstream_branch ),
-                    False
-                )
-
-            # Then play with your Github objects
-            successful_resquests += 1
-            log( 1, 'Successfully Created:', fork_pullrequest )
-
-            repositories_results['Successfully Created'].append(section)
-            fork_pullrequest.add_to_labels( "backstroke" )
-
-        except github.GithubException as error:
-            error = str( error )
-            log( 1, 'Skipping `%s` due `%s`', section, error )
-
-            for reason in skip_reasons:
-                if reason in error:
-                    repositories_results[reason].append(section)
-                    break
+                for item in values:
+                    index += 1
+                    log.clean('        %s. %s', index, item)
 
             else:
-                repositories_results['Unknown Reason'].append(error)
-
-    log.newline()
-    log.clean('Repositories results:')
-
-    for key, values in repositories_results.items():
-        log.newline()
-        log.clean('   ', key)
-
-        if values:
-            index = 0
-
-            for item in values:
-                index += 1
-                log.clean('        %s. %s', index, item)
-
-        else:
-            log.clean('        No results.')
+                log.clean('        No results.')
 
 
 def parser_branches(branches):
