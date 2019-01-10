@@ -60,6 +60,7 @@ log = getLogger( 127, __name__ )
 def main():
     github_token = os.environ.get( 'GITHUBPULLREQUESTS_TOKEN', "" )
     gitmodules_files = []
+    maximum_repositories = 0
 
     # https://stackoverflow.com/questions/6382804/how-to-use-getopt-optarg-in-python-how-to-shift
     argumentParser = argparse.ArgumentParser( description='Create Pull Requests, using GitHub API and a list of repositories' )
@@ -70,11 +71,17 @@ def main():
     argumentParser.add_argument( "-t", "--token", action="store",
             help="GitHub token with `public_repos` access" )
 
+    argumentParser.add_argument( "-mr", "--maximum-repositories", action="store", type=int,
+            help="The maximum count of repositories/requests to process per file." )
+
     argumentsNamespace = argumentParser.parse_args()
     # log( 1, argumentsNamespace )
 
     if argumentsNamespace.token:
         github_token = argumentsNamespace.token
+
+    if argumentsNamespace.maximum_repositories:
+        maximum_repositories = argumentsNamespace.maximum_repositories
 
     if argumentsNamespace.file:
         gitmodules_files = argumentsNamespace.file
@@ -84,7 +91,7 @@ def main():
         argumentParser.print_help()
         return
 
-    pull_requester = PullRequester( github_token )
+    pull_requester = PullRequester( github_token, maximum_repositories )
     for file in gitmodules_files:
         pull_requester.parse_gitmodules( file )
 
@@ -93,7 +100,7 @@ def main():
 
 class PullRequester(object):
 
-    def __init__(self, github_token):
+    def __init__(self, github_token, maximum_repositories=0):
         super(PullRequester, self).__init__()
 
         if os.path.exists( github_token ):
@@ -102,6 +109,7 @@ class PullRequester(object):
 
         self.init_report()
         self.github_token = github_token.strip()
+        self.maximum_repositories = maximum_repositories
 
     def init_report(self):
         self.repositories_results = {}
@@ -147,9 +155,9 @@ class PullRequester(object):
             request_index += 1
             progress       = progress_info( pi )
 
-            # # For quick testing
-            # if request_index > 3:
-            #     break
+            # For quick testing
+            if self.maximum_repositories and request_index > self.maximum_repositories:
+                break
 
             log.newline()
             log( 1, "{:s}, {:3d}({:d}) of {:d}... {:s}".format(
