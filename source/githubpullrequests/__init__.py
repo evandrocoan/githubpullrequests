@@ -145,9 +145,9 @@ def parse_gitmodules(gitmodules_file, github_token):
         branches = get_section_option( section, "branches", general_settings_configs )
         local_branch, upstream_branch = parser_branches( branches )
 
-        log( 1, downstream )
-        log( 1, upstream )
         log( 1, branches )
+        log( 1, 'upstream', upstream )
+        log( 1, 'downstream', downstream )
 
         if not local_branch or not upstream_branch:
             log.newline( count=3 )
