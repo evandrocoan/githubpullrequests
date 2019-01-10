@@ -54,12 +54,12 @@ log = getLogger( 127, __name__ )
 
 def main():
     github_token = os.environ.get( 'GITHUBPULLREQUESTS_TOKEN', "" )
-    gitmodules_file = ''
+    gitmodules_files = []
 
     # https://stackoverflow.com/questions/6382804/how-to-use-getopt-optarg-in-python-how-to-shift
     argumentParser = argparse.ArgumentParser( description='Create Pull Requests, using GitHub API and a list of repositories' )
 
-    argumentParser.add_argument( "-f", "--file", action="store",
+    argumentParser.add_argument( "-f", "--file", action="append",
             help="The file with the repositories informations" )
 
     argumentParser.add_argument( "-t", "--token", action="store",
@@ -72,15 +72,17 @@ def main():
         github_token = argumentsNamespace.token
 
     if argumentsNamespace.file:
-        gitmodules_file = argumentsNamespace.file
+        gitmodules_files = argumentsNamespace.file
 
     else:
         log.clean( "Error: Missing required command line argument `-f/--file`" )
         argumentParser.print_help()
         return
 
-    log.newline()
-    parse_gitmodules( gitmodules_file, github_token )
+    for file in gitmodules_files:
+        log.newline()
+        log( 1, 'file', file )
+        parse_gitmodules( file, github_token )
 
     log.newline()
     log( 1, "Finished!" )
