@@ -125,6 +125,18 @@ def parse_gitmodules(gitmodules_file, github_token):
     sections       = general_settings_configs.sections()
     sections_count = len( sections )
 
+    repositories_results = {}
+    skip_reasons = [
+        'No commits between',
+        'A pull request already exists',
+    ]
+
+    for reason in skip_reasons:
+        repositories_results[reason] = []
+
+    repositories_results['Unknown Reason'] = []
+    repositories_results['Successfully Created'] = []
+
     for section, pi in sequence_timer( sections, info_frequency=0 ):
         request_index += 1
         progress       = progress_info( pi )
@@ -183,12 +195,39 @@ def parse_gitmodules(gitmodules_file, github_token):
 
             # Then play with your Github objects
             successful_resquests += 1
+            log( 1, 'Successfully Created:', fork_pullrequest )
 
-            log( 1, 'Successfully created:', fork_pullrequest )
+            repositories_results['Successfully Created'].append(section)
             fork_pullrequest.add_to_labels( "backstroke" )
 
         except github.GithubException as error:
+            error = str( error )
             log( 1, 'Skipping `%s` due `%s`', section, error )
+
+            for reason in skip_reasons:
+                if reason in error:
+                    repositories_results[reason].append(section)
+                    break
+
+            else:
+                repositories_results['Unknown Reason'].append(error)
+
+    log.newline()
+    log.clean('Repositories results:')
+
+    for key, values in repositories_results.items():
+        log.newline()
+        log.clean('   ', key)
+
+        if values:
+            index = 0
+
+            for item in values:
+                index += 1
+                log.clean('        %s. %s', index, item)
+
+        else:
+            log.clean('        No results.')
 
 
 def parser_branches(branches):
