@@ -42,6 +42,7 @@ import re
 
 import github
 import argparse
+import contextlib
 
 try:
     import configparser
@@ -54,6 +55,7 @@ from debug_tools.utilities import wrap_text
 from debug_tools.estimated_time_left import sequence_timer
 from debug_tools.estimated_time_left import progress_info
 
+g_is_already_running = False
 log = getLogger( 127, __name__ )
 
 
@@ -74,8 +76,15 @@ def main():
     argumentParser.add_argument( "-mr", "--maximum-repositories", action="store", type=int,
             help="The maximum count of repositories/requests to process per file." )
 
+    argumentParser.add_argument( "-c", "--cancel-operation", action="store_true",
+            help="If there is some batch operation running, cancel it as soons as possible." )
+
     argumentsNamespace = argumentParser.parse_args()
     # log( 1, argumentsNamespace )
+
+    if argumentsNamespace.cancel_operation:
+        free_mutex_lock()
+        return
 
     if argumentsNamespace.token:
         github_token = argumentsNamespace.token
@@ -137,9 +146,16 @@ class PullRequester(object):
         # self.github_api = github.Github(base_url="https://{hostname}/api/v3", login_or_token="access_token")
 
     def parse_gitmodules(self, gitmodules_file):
+
+        with lock_context_manager() as is_allowed:
+            if not is_allowed: return
+            self._parse_gitmodules( gitmodules_file )
+
+        free_mutex_lock()
+
+    def _parse_gitmodules(self, gitmodules_file):
         log.newline()
         log( 1, 'gitmodules_file', gitmodules_file )
-
 
         # https://stackoverflow.com/questions/45415684/how-to-stop-tabs-on-python-2-7-rawconfigparser-throwing-parsingerror/
         with open( gitmodules_file ) as fakeFile:
@@ -158,6 +174,9 @@ class PullRequester(object):
         for section, pi in sequence_timer( sections, info_frequency=0 ):
             request_index += 1
             progress       = progress_info( pi )
+
+            if not g_is_already_running:
+                raise ImportError( "Stopping the process as this Python module was reloaded!" )
 
             # For quick testing
             if self.maximum_repositories and request_index > self.maximum_repositories:
@@ -292,6 +311,37 @@ def get_section_option(section, option, configSettings):
         return configSettings.get( section, option )
 
     return ""
+
+
+@contextlib.contextmanager
+def lock_context_manager():
+    """
+        https://stackoverflow.com/questions/12594148/skipping-execution-of-with-block
+        https://stackoverflow.com/questions/27071524/python-context-manager-not-cleaning-up
+        https://stackoverflow.com/questions/10447818/python-context-manager-conditionally-executing-body
+        https://stackoverflow.com/questions/34775099/why-does-contextmanager-throws-a-runtime-error-generator-didnt-stop-after-thro
+    """
+    try:
+        yield is_allowed_to_run()
+
+    finally:
+        free_mutex_lock()
+
+
+def free_mutex_lock():
+    global g_is_already_running
+    g_is_already_running = False
+
+
+def is_allowed_to_run():
+    global g_is_already_running
+
+    if g_is_already_running:
+        log( 1, "You are already running a command. Wait until it finishes or restart Sublime Text" )
+        return False
+
+    g_is_already_running = True
+    return True
 
 
 if __name__ == "__main__":
