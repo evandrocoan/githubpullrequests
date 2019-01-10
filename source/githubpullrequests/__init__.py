@@ -107,9 +107,9 @@ class PullRequester(object):
             with open( github_token, 'r', ) as input_file:
                 github_token = input_file.read()
 
-        self.init_report()
         self.github_token = github_token.strip()
         self.maximum_repositories = maximum_repositories
+        self.init_report()
 
     def init_report(self):
         self.repositories_results = {}
@@ -121,21 +121,25 @@ class PullRequester(object):
         for reason in self.skip_reasons:
             self.repositories_results[reason] = []
 
+        self.downstream_users = set()
+        self.parsed_repositories = set()
+
         self.repositories_results['Unknown Reason'] = []
         self.repositories_results['Successfully Created'] = []
+
+        # using username and password
+        # self.github_api = github.Github("user", "password")
+
+        # or using an access token
+        self.github_api = github.Github( self.github_token )
+
+        # Github Enterprise with custom hostname
+        # self.github_api = github.Github(base_url="https://{hostname}/api/v3", login_or_token="access_token")
 
     def parse_gitmodules(self, gitmodules_file):
         log.newline()
         log( 1, 'gitmodules_file', gitmodules_file )
 
-        # using username and password
-        # github_api = github.Github("user", "password")
-
-        # or using an access token
-        github_api = github.Github( self.github_token )
-
-        # Github Enterprise with custom hostname
-        # github_api = github.Github(base_url="https://{hostname}/api/v3", login_or_token="access_token")
 
         # https://stackoverflow.com/questions/45415684/how-to-stop-tabs-on-python-2-7-rawconfigparser-throwing-parsingerror/
         with open( gitmodules_file ) as fakeFile:
@@ -188,9 +192,13 @@ class PullRequester(object):
                 log.newline( count=3 )
                 log( 1, "ERROR! Invalid downstream `%s`", downstream )
 
-            fork_user = github_api.get_user( downstream_user )
+            fork_user = self.github_api.get_user( downstream_user )
             fork_repo = fork_user.get_repo( downstream_repository )
             full_upstream_name = "{}/{}@{}".format( upstream_user, upstream_repository, upstream_branch )
+
+            downstream_name = "{}/{}".format( downstream_user, downstream_repository )
+            self.downstream_users.add( downstream_user )
+            self.parsed_repositories.add( downstream_name )
 
             try:
                 fork_pullrequest = fork_repo.create_pull(
@@ -229,6 +237,7 @@ class PullRequester(object):
     def publish_report(self):
         log.newline()
         log.clean('Repositories results:')
+        self._publish_nonparsed_repositories()
 
         for key, values in self.repositories_results.items():
             log.newline()
@@ -243,6 +252,20 @@ class PullRequester(object):
 
             else:
                 log.clean('        No results.')
+
+    def _publish_nonparsed_repositories(self):
+        index = 0
+        log.newline()
+        log.clean('    Missing downstreams:')
+
+        for user in self.downstream_users:
+            fork_user = self.github_api.get_user( user )
+
+            for repo in fork_user.get_repos():
+
+                if repo.full_name not in self.parsed_repositories:
+                    index += 1
+                    log.clean( '        %s. %s', index, repo.full_name )
 
 
 def parser_branches(branches):
