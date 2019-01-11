@@ -230,8 +230,8 @@ class PullRequester(object):
                 break
 
             log.newline()
-            log( 1, "{:s}, {:3d}({:d}) of {:d}... {:s}".format(
-                    progress, self.request_index, successful_resquests, sections_count, section ) )
+            log( 1, "{:s}, {:3d}({:d}) of {:d}...".format(
+                    progress, self.request_index, successful_resquests, sections_count ) )
 
             downstream = get_section_option( section, "url", general_settings_configs )
             upstream = get_section_option( section, "upstream", general_settings_configs )
@@ -291,7 +291,7 @@ class PullRequester(object):
 
             except github.GithubException as error:
                 error = "%s, %s" % (full_downstream_name, str( error ) )
-                log( 1, 'Skipping `%s` due `%s`', full_downstream_name, error )
+                log( 1, 'Skipping... %s' error )
 
                 for reason in self.skip_reasons:
                     if reason in error:
@@ -325,18 +325,21 @@ class PullRequester(object):
         used_repositories = set()
 
         log.newline()
-        log.clean('    Missing downstreams:')
+        log.clean('    Repositories not Synchronized with Pull Requests:')
 
         for user in self.downstream_users:
             fork_user = self.github_api.get_user( user )
 
             for repo in fork_user.get_repos():
-                used_repositories.add( repo.full_name )
 
-                if repo.full_name not in self.parsed_repositories:
-                    index += 1
-                    log.clean( '        %s. %s', index, repo.full_name )
+                if repo.parent:
+                    used_repositories.add( repo.full_name )
 
+                    if repo.full_name not in self.parsed_repositories:
+                        index += 1
+                        log.clean( '        %s. %s', index, repo.full_name )
+
+        if index == 0: log.clean('        No results.')
         log.newline()
         log.clean('    Renamed Repositories:')
 
@@ -346,6 +349,8 @@ class PullRequester(object):
         for repository in renamed_repositories:
             index += 1
             log.clean( '        %s. %s', index, repository )
+
+        if index == 0: log.clean('        No results.')
 
 
 def parser_branches(branches):
