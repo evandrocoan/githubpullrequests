@@ -91,7 +91,10 @@ def main():
             help="If there is some batch operation running, cancel it as soons as possible." )
 
     argumentParser.add_argument( "-s", "--synced-repositories", action="store_true",
-            help="Reports which repositories not Synchronized with Pull Requests." )
+            help="Reports which repositories not Synchronized with Pull Requests. "
+            "This also resets/skips any last session saved due old throw/raised exceptions, "
+            "because to compute correctly the repositories list, it is required to know all "
+            "available repositories." )
 
     argumentsNamespace = argumentParser.parse_args()
     # log( 1, argumentsNamespace )
@@ -131,12 +134,16 @@ class PullRequester(object):
             with open( github_token, 'r', ) as input_file:
                 github_token = input_file.read()
 
-        try:
-            with open( CHANNEL_SESSION_FILE, 'r' ) as data_file:
-                self.lastSection = json.load( data_file, object_pairs_hook=OrderedDict )
-
-        except( IOError, ValueError ):
+        if synced_repositories:
             self.lastSection = OrderedDict()
+
+        else:
+            try:
+                with open( CHANNEL_SESSION_FILE, 'r' ) as data_file:
+                    self.lastSection = json.load( data_file, object_pairs_hook=OrderedDict )
+
+            except( IOError, ValueError ):
+                self.lastSection = OrderedDict()
 
         self.github_token = github_token.strip()
         self.maximum_repositories = maximum_repositories
@@ -367,6 +374,10 @@ class PullRequester(object):
                     if repo.full_name not in self.parsed_repositories:
                         index += 1
                         log.clean( '        %s. %s', index, repo.full_name )
+
+                        # For quick testing
+                        if self.maximum_repositories and index > self.maximum_repositories:
+                            break
 
         if self.synced_repositories:
             if index == 0: log.clean('        No results.')
