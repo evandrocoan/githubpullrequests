@@ -140,7 +140,7 @@ class PullRequester(object):
         self.init_report()
 
     def init_report(self):
-        self.repositories_results = {}
+        self.repositories_results = OrderedDict()
         self.skip_reasons = [
             'No commits between',
             'A pull request already exists',
@@ -291,7 +291,7 @@ class PullRequester(object):
 
             except github.GithubException as error:
                 error = "%s, %s" % (full_downstream_name, str( error ) )
-                log( 1, 'Skipping... %s' error )
+                log( 1, 'Skipping... %s', error )
 
                 for reason in self.skip_reasons:
                     if reason in error:
@@ -304,11 +304,11 @@ class PullRequester(object):
     def publish_report(self):
         log.newline()
         log.clean('Repositories results:')
-        self._publish_nonparsed_repositories()
 
-        for key, values in self.repositories_results.items():
+        def general_report(report_key):
             log.newline()
-            log.clean('   ', key)
+            log.clean('   ', report_key)
+            values = self.repositories_results[report_key]
 
             if values:
                 index = 0
@@ -320,7 +320,10 @@ class PullRequester(object):
             else:
                 log.clean('        No results.')
 
-    def _publish_nonparsed_repositories(self):
+        report_first = 'No commits between'
+        general_report(report_first)
+        del self.repositories_results[report_first]
+
         index = 0
         used_repositories = set()
 
@@ -351,6 +354,9 @@ class PullRequester(object):
             log.clean( '        %s. %s', index, repository )
 
         if index == 0: log.clean('        No results.')
+
+        for report_key in self.repositories_results.keys():
+            general_report(report_key)
 
 
 def parser_branches(branches):
