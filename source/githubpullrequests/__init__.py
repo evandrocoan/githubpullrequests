@@ -151,6 +151,7 @@ class PullRequester(object):
 
         self.last_module_file = None
         self.request_index = 0
+        self.skipped_repositories = []
         self.init_report()
 
     def init_report(self):
@@ -167,6 +168,7 @@ class PullRequester(object):
 
         self.downstream_users = set()
         self.parsed_repositories = set()
+        self.full_parsed_repositories = {}
 
         self.repositories_results['Unknown Reason'] = []
         self.repositories_results['Successfully Created'] = []
@@ -270,9 +272,11 @@ class PullRequester(object):
 
             upstream_user, upstream_repository = parse_github( upstream )
             downstream_user, downstream_repository = parse_github( downstream )
+            downstream_name = "{}/{}".format( downstream_user, downstream_repository )
 
             if not upstream_user or not upstream_repository:
                 log( 1, "Skipping %s because the upstream is not defined...", section )
+                self.skipped_repositories.append( "%s -> %s" % ( downstream_name, section ) )
                 continue
 
             branches = get_section_option( section, "branches", config_parser )
@@ -293,11 +297,11 @@ class PullRequester(object):
             fork_user = self.github_api.get_user( downstream_user )
             fork_repo = fork_user.get_repo( downstream_repository )
             full_upstream_name = "{}/{}@{}".format( upstream_user, upstream_repository, upstream_branch )
+            full_downstream_name = "{} -> {}".format( downstream_name, section )
 
-            downstream_name = "{}/{}".format( downstream_user, downstream_repository )
-            full_downstream_name = "{} @ {}".format( downstream_name, section )
             self.downstream_users.add( downstream_user )
             self.parsed_repositories.add( downstream_name )
+            self.full_parsed_repositories[downstream_name] = fork_repo
 
             try:
                 fork_pullrequest = fork_repo.create_pull(
@@ -336,6 +340,7 @@ class PullRequester(object):
     def publish_report(self):
         log.newline()
         log.clean('Repositories results:')
+        log.newline()
 
         def general_report(report_key):
             log.newline()
@@ -351,6 +356,13 @@ class PullRequester(object):
 
             else:
                 log.clean('        No results.')
+
+        index = 0
+        log.clean('    Skipped due missing upstreams:')
+
+        for skipped_repository in self.skipped_repositories:
+            index += 1
+            log.clean('        %s. %s', index, skipped_repository)
 
         report_first = 'No commits between'
         general_report(report_first)
@@ -391,8 +403,11 @@ class PullRequester(object):
         renamed_repositories = self.parsed_repositories - used_repositories
 
         for repository in renamed_repositories:
-            index += 1
-            log.clean( '        %s. %s', index, repository )
+            full_repository = self.full_parsed_repositories[repository]
+
+            if full_repository.full_name != repository:
+                index += 1
+                log.clean( '        %s. %s, actual name -> %s', index, repository, full_repository.full_name )
 
         if index == 0: log.clean('        No results.')
 
