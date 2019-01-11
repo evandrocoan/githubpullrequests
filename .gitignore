@@ -1,6 +1,7 @@
 *.sublime-workspace
 *.pyc
 /.tox
+/source/githubpullrequests/last_session.json
 **.egg-info**
 *.pyo
 .vscode

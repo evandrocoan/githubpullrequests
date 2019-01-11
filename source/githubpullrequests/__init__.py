@@ -39,6 +39,7 @@
 import os
 import io
 import re
+import json
 
 import github
 import argparse
@@ -50,10 +51,19 @@ try:
 except( ImportError, ValueError ):
     from six.moves import configparser
 
+from collections import OrderedDict
+
 from debug_tools import getLogger
 from debug_tools.utilities import wrap_text
+from debug_tools.utilities import pop_dict_last_item
+from debug_tools.utilities import move_to_dict_beginning
 from debug_tools.estimated_time_left import sequence_timer
 from debug_tools.estimated_time_left import progress_info
+
+PACKAGE_ROOT_DIRECTORY = os.path.dirname( os.path.realpath( __file__ ) )
+CHANNEL_SESSION_FILE = os.path.join( PACKAGE_ROOT_DIRECTORY, "last_session.json" )
+
+MAXIMUM_WORSPACES_ENTRIES = 100
 
 g_is_already_running = False
 log = getLogger( 127, __name__ )
@@ -116,8 +126,17 @@ class PullRequester(object):
             with open( github_token, 'r', ) as input_file:
                 github_token = input_file.read()
 
+        try:
+            with open( CHANNEL_SESSION_FILE, 'r' ) as data_file:
+                self.lastSection = json.load( data_file, object_pairs_hook=OrderedDict )
+
+        except( IOError, ValueError ):
+            self.lastSection = OrderedDict()
+
         self.github_token = github_token.strip()
         self.maximum_repositories = maximum_repositories
+
+        self.request_index = 0
         self.init_report()
 
     def init_report(self):
@@ -151,9 +170,28 @@ class PullRequester(object):
 
         with lock_context_manager() as is_allowed:
             if not is_allowed: return
-            self._parse_gitmodules( gitmodules_file )
+
+            try:
+                self._parse_gitmodules( gitmodules_file )
+
+            except:
+                self.save_data( gitmodules_file, self.request_index - 1 )
+                raise
+
+            self.save_data( gitmodules_file, 0 )
 
         free_mutex_lock()
+
+    def save_data(self, gitmodules_file, index):
+        self.lastSection[gitmodules_file] = index
+
+        move_to_dict_beginning( self.lastSection, gitmodules_file )
+        while len( self.lastSection ) > MAXIMUM_WORSPACES_ENTRIES:
+            pop_dict_last_item( self.lastSection )
+
+        log(1, 'self.lastSection', self.lastSection)
+        with open( CHANNEL_SESSION_FILE, 'w' ) as output_file:
+            json.dump( self.lastSection, output_file, indent=4, separators=(',', ': ') )
 
     def _parse_gitmodules(self, gitmodules_file):
         log.newline()
@@ -167,26 +205,33 @@ class PullRequester(object):
         general_settings_configs = configparser.RawConfigParser()
         general_settings_configs._read( fakefile, gitmodules_file )
 
-        request_index = 0
+        start_index = self.lastSection.get( gitmodules_file, 0 )
+        self.request_index = 0
         successful_resquests = 0
 
         sections       = general_settings_configs.sections()
         sections_count = len( sections )
 
         for section, pi in sequence_timer( sections, info_frequency=0 ):
-            request_index += 1
+            self.request_index += 1
+            self.request_index = self.request_index
             progress       = progress_info( pi )
 
             if not g_is_already_running:
                 raise ImportError( "Stopping the process as this Python module was reloaded!" )
 
+            # Walk until the last processed index, skipping everything else
+            if start_index > 0:
+                start_index -= 1
+                continue
+
             # For quick testing
-            if self.maximum_repositories and request_index > self.maximum_repositories:
+            if self.maximum_repositories and self.request_index > self.maximum_repositories:
                 break
 
             log.newline()
             log( 1, "{:s}, {:3d}({:d}) of {:d}... {:s}".format(
-                    progress, request_index, successful_resquests, sections_count, section ) )
+                    progress, self.request_index, successful_resquests, sections_count, section ) )
 
             downstream = get_section_option( section, "url", general_settings_configs )
             upstream = get_section_option( section, "upstream", general_settings_configs )
