@@ -72,6 +72,7 @@ log = getLogger( 127, __name__ )
 def main():
     github_token = os.environ.get( 'GITHUBPULLREQUESTS_TOKEN', "" )
     gitmodules_files = []
+    synced_repositories = False
     maximum_repositories = 0
 
     # https://stackoverflow.com/questions/6382804/how-to-use-getopt-optarg-in-python-how-to-shift
@@ -89,6 +90,9 @@ def main():
     argumentParser.add_argument( "-c", "--cancel-operation", action="store_true",
             help="If there is some batch operation running, cancel it as soons as possible." )
 
+    argumentParser.add_argument( "-s", "--synced-repositories", action="store_true",
+            help="Reports which repositories not Synchronized with Pull Requests." )
+
     argumentsNamespace = argumentParser.parse_args()
     # log( 1, argumentsNamespace )
 
@@ -98,6 +102,9 @@ def main():
 
     if argumentsNamespace.token:
         github_token = argumentsNamespace.token
+
+    if argumentsNamespace.synced_repositories:
+        synced_repositories = argumentsNamespace.synced_repositories
 
     if argumentsNamespace.maximum_repositories:
         maximum_repositories = argumentsNamespace.maximum_repositories
@@ -110,7 +117,7 @@ def main():
         argumentParser.print_help()
         return
 
-    pull_requester = PullRequester( github_token, maximum_repositories )
+    pull_requester = PullRequester( github_token, maximum_repositories, synced_repositories )
     for file in gitmodules_files:
         pull_requester.parse_gitmodules( file )
 
@@ -119,7 +126,7 @@ def main():
 
 class PullRequester(object):
 
-    def __init__(self, github_token, maximum_repositories=0):
+    def __init__(self, github_token, maximum_repositories=0, synced_repositories=False):
         super(PullRequester, self).__init__()
 
         if os.path.exists( github_token ):
@@ -135,6 +142,7 @@ class PullRequester(object):
 
         self.github_token = github_token.strip()
         self.maximum_repositories = maximum_repositories
+        self.synced_repositories = synced_repositories
 
         self.request_index = 0
         self.init_report()
@@ -327,22 +335,25 @@ class PullRequester(object):
         index = 0
         used_repositories = set()
 
-        log.newline()
-        log.clean('    Repositories not Synchronized with Pull Requests:')
+        if self.synced_repositories:
+            log.newline()
+            log.clean('    Repositories not Synchronized with Pull Requests:')
 
         for user in self.downstream_users:
             fork_user = self.github_api.get_user( user )
 
             for repo in fork_user.get_repos():
+                used_repositories.add( repo.full_name )
 
-                if repo.parent:
-                    used_repositories.add( repo.full_name )
+                if self.synced_repositories and repo.parent:
 
                     if repo.full_name not in self.parsed_repositories:
                         index += 1
                         log.clean( '        %s. %s', index, repo.full_name )
 
-        if index == 0: log.clean('        No results.')
+        if self.synced_repositories:
+            if index == 0: log.clean('        No results.')
+
         log.newline()
         log.clean('    Renamed Repositories:')
 
