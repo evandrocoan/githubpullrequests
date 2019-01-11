@@ -373,7 +373,9 @@ class PullRequester(object):
 
                     if repo.full_name not in self.parsed_repositories:
                         index += 1
-                        log.clean( '        %s. %s', index, repo.full_name )
+                        parent = repo.parent
+                        log.clean( '        %s. %s@%s, upstream -> %s@%s', index, repo.full_name, repo.default_branch,
+                                parent.full_name, parent.default_branch )
 
                         # For quick testing
                         if self.maximum_repositories and index > self.maximum_repositories:
