@@ -118,9 +118,7 @@ def main():
         return
 
     pull_requester = PullRequester( github_token, maximum_repositories, synced_repositories )
-    for file in gitmodules_files:
-        pull_requester.parse_gitmodules( file )
-
+    pull_requester.parse_gitmodules( gitmodules_files )
     pull_requester.publish_report()
 
 
@@ -144,6 +142,7 @@ class PullRequester(object):
         self.maximum_repositories = maximum_repositories
         self.synced_repositories = synced_repositories
 
+        self.last_module_file = None
         self.request_index = 0
         self.init_report()
 
@@ -180,50 +179,68 @@ class PullRequester(object):
             if not is_allowed: return
 
             try:
+                if not isinstance( gitmodules_file, list ):
+                    raise ValueError( "The gitmodules_file need to be an instance of list: `%s`" % gitmodules_file )
+
                 self._parse_gitmodules( gitmodules_file )
 
             except:
-                self.save_data( gitmodules_file, self.request_index - 1 )
+                self._save_data( self.request_index - 1 )
                 raise
 
-            self.save_data( gitmodules_file, 0 )
+            self._save_data( 0 )
 
         free_mutex_lock()
 
-    def save_data(self, gitmodules_file, index):
-        self.lastSection[gitmodules_file] = index
+    def _save_data(self, index):
+        if not self.last_module_file: return
+        self.lastSection[self.last_module_file] = index
 
-        move_to_dict_beginning( self.lastSection, gitmodules_file )
+        move_to_dict_beginning( self.lastSection, self.last_module_file )
         while len( self.lastSection ) > MAXIMUM_WORSPACES_ENTRIES:
             pop_dict_last_item( self.lastSection )
 
-        log(1, 'self.lastSection', self.lastSection)
         with open( CHANNEL_SESSION_FILE, 'w' ) as output_file:
             json.dump( self.lastSection, output_file, indent=4, separators=(',', ': ') )
 
     def _parse_gitmodules(self, gitmodules_file):
-        log.newline()
-        log( 1, 'gitmodules_file', gitmodules_file )
+        sections_count = 0
+        loaded_config_file = OrderedDict()
 
-        # https://stackoverflow.com/questions/45415684/how-to-stop-tabs-on-python-2-7-rawconfigparser-throwing-parsingerror/
-        with open( gitmodules_file ) as fakeFile:
-            # https://stackoverflow.com/questions/22316333/how-can-i-resolve-typeerror-with-stringio-in-python-2-7
-            fakefile = io.StringIO( fakeFile.read().replace( u"\t", u"" ) )
+        for module_file in gitmodules_file:
+            # https://stackoverflow.com/questions/45415684/how-to-stop-tabs-on-python-2-7-rawconfigparser-throwing-parsingerror/
+            with open( module_file ) as fakeFile:
+                # https://stackoverflow.com/questions/22316333/how-can-i-resolve-typeerror-with-stringio-in-python-2-7
+                fakefile = io.StringIO( fakeFile.read().replace( u"\t", u"" ) )
 
-        general_settings_configs = configparser.RawConfigParser()
-        general_settings_configs._read( fakefile, gitmodules_file )
+            config_parser = configparser.RawConfigParser()
+            config_parser._read( fakefile, module_file )
+            sections_count += len( config_parser.sections() )
+            loaded_config_file[module_file] = config_parser
 
-        start_index = self.lastSection.get( gitmodules_file, 0 )
+        start_index = 0
         self.request_index = 0
         successful_resquests = 0
 
-        sections       = general_settings_configs.sections()
-        sections_count = len( sections )
+        def get_sections():
+            for module_file, config_parser in loaded_config_file.items():
+                for section in config_parser.sections():
+                    yield section, module_file, config_parser
 
-        for section, pi in sequence_timer( sections, info_frequency=0 ):
+        self.last_module_file = ""
+
+        for sections, pi in sequence_timer( get_sections(), info_frequency=0, length=sections_count ):
+            section, module_file, config_parser = sections
+            progress = progress_info( pi )
             self.request_index += 1
             self.request_index = self.request_index
-            progress       = progress_info( pi )
+
+            if self.last_module_file != module_file:
+                self.last_module_file = module_file
+                start_index = self.lastSection.get( module_file, 0 )
+
+                log.newline(count=2)
+                log( 1, 'module_file', module_file )
 
             if not g_is_already_running:
                 raise ImportError( "Stopping the process as this Python module was reloaded!" )
@@ -241,8 +258,8 @@ class PullRequester(object):
             log( 1, "{:s}, {:3d}({:d}) of {:d}...".format(
                     progress, self.request_index, successful_resquests, sections_count ) )
 
-            downstream = get_section_option( section, "url", general_settings_configs )
-            upstream = get_section_option( section, "upstream", general_settings_configs )
+            downstream = get_section_option( section, "url", config_parser )
+            upstream = get_section_option( section, "upstream", config_parser )
 
             upstream_user, upstream_repository = parse_github( upstream )
             downstream_user, downstream_repository = parse_github( downstream )
@@ -251,7 +268,7 @@ class PullRequester(object):
                 log( 1, "Skipping %s because the upstream is not defined...", section )
                 continue
 
-            branches = get_section_option( section, "branches", general_settings_configs )
+            branches = get_section_option( section, "branches", config_parser )
             local_branch, upstream_branch = parser_branches( branches )
 
             log( 1, branches )
