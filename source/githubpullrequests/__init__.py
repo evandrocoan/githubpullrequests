@@ -339,6 +339,30 @@ class PullRequester(object):
 
     def publish_report(self):
         log.newline()
+        index = 0
+        used_repositories = set()
+        full_used_repositories = {}
+
+        for user in self.downstream_users:
+            fork_user = self.github_api.get_user( user )
+
+            # For quick testing
+            if self.maximum_repositories and index > self.maximum_repositories: break
+
+            for repository in fork_user.get_repos():
+                used_repositories.add( repository.full_name )
+
+                if self.synced_repositories:
+                    full_used_repositories[repository.full_name] = repository
+                    index += 1
+
+                    # For quick testing
+                    if self.maximum_repositories and index > self.maximum_repositories: break
+
+                    log( 1, 'fetching parent %s. %s', index, repository.full_name )
+                    repository.parent
+
+        log.newline()
         log.clean('Repositories results:')
         log.newline()
 
@@ -368,33 +392,24 @@ class PullRequester(object):
         general_report(report_first)
         del self.repositories_results[report_first]
 
-        index = 0
-        used_repositories = set()
-
         if self.synced_repositories:
+            index = 0
             log.newline()
             log.clean('    Repositories not Synchronized with Pull Requests:')
 
-        for user in self.downstream_users:
-            fork_user = self.github_api.get_user( user )
+            for repository_name in used_repositories:
+                repository = full_used_repositories[repository_name]
 
-            for repo in fork_user.get_repos():
-                used_repositories.add( repo.full_name )
+                if repository.parent:
 
-                if self.synced_repositories and repo.parent:
-
-                    if repo.full_name not in self.parsed_repositories:
+                    if repository_name not in self.parsed_repositories:
                         index += 1
-                        parent = repo.parent
-                        log.clean( '        %s. %s@%s, upstream -> %s@%s', index, repo.full_name, repo.default_branch,
+                        parent = repository.parent
+                        log.clean( '        %s. %s@%s, upstream -> %s@%s', index, repository_name, repository.default_branch,
                                 parent.full_name, parent.default_branch )
 
-                        # For quick testing
-                        if self.maximum_repositories and index > self.maximum_repositories:
-                            break
-
-        if self.synced_repositories:
-            if index == 0: log.clean('        No results.')
+            if index == 0:
+                log.clean('        No results.')
 
         log.newline()
         log.clean('    Renamed Repositories:')
@@ -402,12 +417,12 @@ class PullRequester(object):
         index = 0
         renamed_repositories = self.parsed_repositories - used_repositories
 
-        for repository in renamed_repositories:
-            full_repository = self.full_parsed_repositories[repository]
+        for repository_name in renamed_repositories:
+            full_repository = self.full_parsed_repositories[repository_name]
 
-            if full_repository.full_name != repository:
+            if full_repository.full_name != repository_name:
                 index += 1
-                log.clean( '        %s. %s, actual name -> %s', index, repository, full_repository.full_name )
+                log.clean( '        %s. %s, actual name -> %s', index, repository_name, full_repository.full_name )
 
         if index == 0: log.clean('        No results.')
 
