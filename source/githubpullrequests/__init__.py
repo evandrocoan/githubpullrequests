@@ -126,6 +126,7 @@ class PullRequester(object):
             'No commits between',
             'A pull request already exists',
             'Repository was archived',
+            'has no history in common',
         ]
 
         for reason in self.skip_reasons:
