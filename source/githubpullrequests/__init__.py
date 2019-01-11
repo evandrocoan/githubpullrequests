@@ -217,6 +217,7 @@ class PullRequester(object):
             full_upstream_name = "{}/{}@{}".format( upstream_user, upstream_repository, upstream_branch )
 
             downstream_name = "{}/{}".format( downstream_user, downstream_repository )
+            full_downstream_name = "{} @ {}".format( downstream_name, section )
             self.downstream_users.add( downstream_user )
             self.parsed_repositories.add( downstream_name )
 
@@ -239,16 +240,16 @@ class PullRequester(object):
                 successful_resquests += 1
                 log( 1, 'Successfully Created:', fork_pullrequest )
 
-                self.repositories_results['Successfully Created'].append(section)
+                self.repositories_results['Successfully Created'].append(full_downstream_name)
                 fork_pullrequest.add_to_labels( "backstroke" )
 
             except github.GithubException as error:
-                error = "%s, %s" % (section, str( error ) )
-                log( 1, 'Skipping `%s` due `%s`', section, error )
+                error = "%s, %s" % (full_downstream_name, str( error ) )
+                log( 1, 'Skipping `%s` due `%s`', full_downstream_name, error )
 
                 for reason in self.skip_reasons:
                     if reason in error:
-                        self.repositories_results[reason].append(section)
+                        self.repositories_results[reason].append(full_downstream_name)
                         break
 
                 else:
@@ -275,6 +276,8 @@ class PullRequester(object):
 
     def _publish_nonparsed_repositories(self):
         index = 0
+        used_repositories = set()
+
         log.newline()
         log.clean('    Missing downstreams:')
 
@@ -282,10 +285,21 @@ class PullRequester(object):
             fork_user = self.github_api.get_user( user )
 
             for repo in fork_user.get_repos():
+                used_repositories.add( repo.full_name )
 
                 if repo.full_name not in self.parsed_repositories:
                     index += 1
                     log.clean( '        %s. %s', index, repo.full_name )
+
+        log.newline()
+        log.clean('    Renamed Repositories:')
+
+        index = 0
+        renamed_repositories = self.parsed_repositories - used_repositories
+
+        for repository in renamed_repositories:
+            index += 1
+            log.clean( '        %s. %s', index, repository )
 
 
 def parser_branches(branches):
