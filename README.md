@@ -2,11 +2,45 @@
 
 Create pull requests programmatically using the GitHub API.
 
+Created as a local alternative to:
+1. https://github.com/backstrokeapp/server/issues/102#issuecomment-451306979 Stopped working a few days ago with Recived an error: undefined
+1. https://github.com/wei/pull/issues/76#issue-397123888 Do not reset hard my default branch
+
 
 ### Usage
 
 ```
-githubpullrequests repositories_list.txt
+$ githubpullrequests -h
+usage: githubpullrequests [-h] [-f FILE] [-t TOKEN] [-mr MAXIMUM_REPOSITORIES]
+                          [-c] [-s]
+
+Create Pull Requests, using GitHub API and a list of repositories.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -f FILE, --file FILE  The file with the repositories informations
+  -t TOKEN, --token TOKEN
+                        GitHub token with `public_repos` access, or the path
+                        to a file with the Github token in plain text. The
+                        only contents the file can have is the token,
+                        optionally with a tralling new line.
+  -mr MAXIMUM_REPOSITORIES, --maximum-repositories MAXIMUM_REPOSITORIES
+                        The maximum count of repositories/requests to process
+                        per file.
+  -c, --cancel-operation
+                        If there is some batch operation running, cancel it as
+                        soons as possible.
+  -s, --synced-repositories
+                        Reports which repositories not Synchronized with Pull
+                        Requests. This also resets/skips any last session
+                        saved due old throw/raised exceptions, because to
+                        compute correctly the repositories list, it is
+                        required to know all available repositories.
+```
+
+For example:
+```
+$ githubpullrequests -f repositories_list.txt
 ```
 
 Example of `repositories_list.txt`:

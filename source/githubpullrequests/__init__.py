@@ -76,13 +76,15 @@ def main():
     maximum_repositories = 0
 
     # https://stackoverflow.com/questions/6382804/how-to-use-getopt-optarg-in-python-how-to-shift
-    argumentParser = argparse.ArgumentParser( description='Create Pull Requests, using GitHub API and a list of repositories' )
+    argumentParser = argparse.ArgumentParser( description='Create Pull Requests, using GitHub API and a list of repositories.' )
 
     argumentParser.add_argument( "-f", "--file", action="append",
             help="The file with the repositories informations" )
 
     argumentParser.add_argument( "-t", "--token", action="store",
-            help="GitHub token with `public_repos` access" )
+            help="GitHub token with `public_repos` access, or the path "
+            "to a file with the Github token in plain text. The only contents "
+            "the file can have is the token, optionally with a tralling new line." )
 
     argumentParser.add_argument( "-mr", "--maximum-repositories", action="store", type=int,
             help="The maximum count of repositories/requests to process per file." )
