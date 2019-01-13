@@ -7,6 +7,11 @@ Created as a local alternative to:
 1. https://github.com/wei/pull/issues/76#issue-397123888 Do not reset hard my default branch
 
 
+### Installation
+
+Either clone this repository and run `python setup.py develop` or just use `pip install githubpullrequests`
+
+
 ### Usage
 
 ```
