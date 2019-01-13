@@ -57,6 +57,7 @@ from debug_tools import getLogger
 from debug_tools.utilities import wrap_text
 from debug_tools.utilities import pop_dict_last_item
 from debug_tools.utilities import move_to_dict_beginning
+from debug_tools.third_part import get_section_option
 from debug_tools.estimated_time_left import sequence_timer
 from debug_tools.estimated_time_left import progress_info
 
@@ -448,14 +449,6 @@ def parse_github(url):
         return matches.group(1), matches.group(2)
 
     return "", ""
-
-
-def get_section_option(section, option, configSettings):
-
-    if configSettings.has_option( section, option ):
-        return configSettings.get( section, option )
-
-    return ""
 
 
 @contextlib.contextmanager
