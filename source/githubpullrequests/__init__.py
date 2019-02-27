@@ -93,6 +93,10 @@ def main():
     argumentParser.add_argument( "-c", "--cancel-operation", action="store_true",
             help="If there is some batch operation running, cancel it as soons as possible." )
 
+    argumentParser.add_argument( "-d", "--dry-run", action="store_true",
+            help="Do a rehearsal of a performance or procedure instead of the real one "
+            "i.e., do not create any pull requests, but simulates/predends to do so." )
+
     argumentParser.add_argument( "-s", "--synced-repositories", action="store_true",
             help="Reports which repositories not Synchronized with Pull Requests. "
             "This also resets/skips any last session saved due old throw/raised exceptions, "
@@ -123,15 +127,16 @@ def main():
         argumentParser.print_help()
         return
 
-    pull_requester = PullRequester( github_token, maximum_repositories, synced_repositories )
+    pull_requester = PullRequester( github_token, maximum_repositories, synced_repositories, argumentsNamespace.dry_run )
     pull_requester.parse_gitmodules( gitmodules_files )
     pull_requester.publish_report()
 
 
 class PullRequester(object):
 
-    def __init__(self, github_token, maximum_repositories=0, synced_repositories=False):
+    def __init__(self, github_token, maximum_repositories=0, synced_repositories=False, is_dry_run=False):
         super(PullRequester, self).__init__()
+        self.is_dry_run = is_dry_run
 
         if os.path.exists( github_token ):
             with open( github_token, 'r', ) as input_file:
@@ -277,68 +282,82 @@ class PullRequester(object):
             downstream_user, downstream_repository = parse_github( downstream )
             downstream_name = "{}/{}".format( downstream_user, downstream_repository )
 
-            if not upstream_user or not upstream_repository:
-                log( 1, "Skipping %s because the upstream is not defined...", section )
-                self.skipped_repositories.append( "%s -> %s" % ( downstream_name, section ) )
-                continue
-
             branches = get_section_option( section, "branches", config_parser )
             local_branch, upstream_branch = parser_branches( branches )
 
-            log( 1, branches )
-            log( 1, 'upstream', upstream )
-            log( 1, 'downstream', downstream )
+            full_upstream_name = "{}/{}@{}".format( upstream_user, upstream_repository, upstream_branch )
+            full_downstream_name = "{} -> {}".format( downstream_name, section )
 
-            if not local_branch or not upstream_branch:
-                log.newline( count=3 )
-                log( 1, "ERROR! Invalid branches `%s`", branches )
+            log( 1, branches )
+            log( 1, 'upstream', full_upstream_name )
+            log( 1, 'downstream', full_downstream_name )
 
             if not downstream_user or not downstream_repository:
                 log.newline( count=3 )
                 log( 1, "ERROR! Invalid downstream `%s`", downstream )
 
-            fork_user = self.github_api.get_user( downstream_user )
-            fork_repo = fork_user.get_repo( downstream_repository )
-            full_upstream_name = "{}/{}@{}".format( upstream_user, upstream_repository, upstream_branch )
-            full_downstream_name = "{} -> {}".format( downstream_name, section )
+            try:
+                fork_user = self.github_api.get_user( downstream_user )
+                fork_repo = fork_user.get_repo( downstream_repository )
+
+            except github.GithubException as error:
+                self._register_error_reason( full_downstream_name, error )
+                continue
 
             self.downstream_users.add( downstream_user )
             self.parsed_repositories.add( downstream_name )
             self.full_parsed_repositories[downstream_name] = fork_repo
 
-            try:
-                fork_pullrequest = fork_repo.create_pull(
-                        "Update from {}".format( full_upstream_name ),
-                        wrap_text( r"""
-                            The upstream repository `{}` has some new changes that aren't in this fork.
-                            So, here they are, ready to be merged!
+            if not upstream_user or not upstream_repository:
+                log( 1, "Skipping %s because the upstream is not defined...", section )
+                self.skipped_repositories.append( "%s -> %s" % ( downstream_name, section ) )
+                continue
 
-                            This Pull Request was created programmatically by the
-                            [githubpullrequests](https://github.com/evandrocoan/githubpullrequests).
-                        """.format( full_upstream_name ), single_lines=True, ),
-                        local_branch,
-                        '{}:{}'.format( upstream_user, upstream_branch ),
-                        False
-                    )
+            if not local_branch or not upstream_branch:
+                log.newline( count=3 )
+                log( 1, "ERROR! Invalid branches `%s`", branches )
+
+            try:
+                if self.is_dry_run:
+                    fork_pullrequest = fork_repo.url
+
+                else:
+                    fork_pullrequest = fork_repo.create_pull(
+                            "Update from {}".format( full_upstream_name ),
+                            wrap_text( r"""
+                                The upstream repository `{}` has some new changes that aren't in this fork.
+                                So, here they are, ready to be merged!
+
+                                This Pull Request was created programmatically by the
+                                [githubpullrequests](https://github.com/evandrocoan/githubpullrequests).
+                            """.format( full_upstream_name ), single_lines=True, ),
+                            local_branch,
+                            '{}:{}'.format( upstream_user, upstream_branch ),
+                            False
+                        )
 
                 # Then play with your Github objects
                 successful_resquests += 1
                 log( 1, 'Successfully Created:', fork_pullrequest )
 
-                self.repositories_results['Successfully Created'].append(full_downstream_name)
-                fork_pullrequest.add_to_labels( "backstroke" )
+                self.repositories_results['Successfully Created'].append( full_downstream_name )
+                if not self.is_dry_run: fork_pullrequest.add_to_labels( "backstroke" )
 
             except github.GithubException as error:
-                error = "%s, %s" % (full_downstream_name, str( error ) )
-                log( 1, 'Skipping... %s', error )
+                self._register_error_reason( full_downstream_name, error )
+                continue
 
-                for reason in self.skip_reasons:
-                    if reason in error:
-                        self.repositories_results[reason].append(full_downstream_name)
-                        break
+    def _register_error_reason(self, full_downstream_name, error):
+        error = "%s, %s" % (full_downstream_name, str( error ) )
+        log( 1, 'Skipping... %s', error )
 
-                else:
-                    self.repositories_results['Unknown Reason'].append(error)
+        for reason in self.skip_reasons:
+            if reason in error:
+                self.repositories_results[reason].append(full_downstream_name)
+                break
+
+        else:
+            self.repositories_results['Unknown Reason'].append(error)
 
     def publish_report(self):
         log.newline()
@@ -415,7 +434,7 @@ class PullRequester(object):
                 log.clean('        No results.')
 
         log.newline()
-        log.clean('    Renamed Repositories:')
+        log.clean('    Possible Renamed Repositories:')
 
         index = 0
         renamed_repositories = self.parsed_repositories - used_repositories
@@ -446,7 +465,11 @@ def parse_github(url):
     matches = re.search( r'github\.com\/(.+)\/(.+)', url )
 
     if matches:
-        return matches.group(1), matches.group(2)
+        user = matches.group(1)
+        repository = matches.group(2)
+
+        if repository.endswith('.git'): repository = repository[:-4]
+        return user, repository
 
     return "", ""
 
