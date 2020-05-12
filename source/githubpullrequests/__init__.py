@@ -85,7 +85,7 @@ def main():
     argumentParser.add_argument( "-t", "--token", action="store",
             help="GitHub token with `public_repos` access, or the path "
             "to a file with the Github token in plain text. The only contents "
-            "the file can have is the token, optionally with a tralling new line." )
+            "the file can have is the token, optionally with a trailing new line." )
 
     argumentParser.add_argument( "-mr", "--maximum-repositories", action="store", type=int,
             help="The maximum count of repositories/requests to process per file." )
@@ -95,7 +95,7 @@ def main():
 
     argumentParser.add_argument( "-d", "--dry-run", action="store_true",
             help="Do a rehearsal of a performance or procedure instead of the real one "
-            "i.e., do not create any pull requests, but simulates/predends to do so." )
+            "i.e., do not create any pull requests, but simulates/pretends to do so." )
 
     argumentParser.add_argument( "-s", "--synced-repositories", action="store_true",
             help="Reports which repositories not Synchronized with Pull Requests. "
