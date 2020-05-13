@@ -106,6 +106,9 @@ def main():
     argumentParser.add_argument( "-ei", "--enable-issues", action="store", default="",
             help="Enable the issue tracker on all repositories for the given user." )
 
+    argumentParser.add_argument( "-as", "--add-stars", action="store", default="",
+            help="Add a star on all repositories for the given user." )
+
     argumentsNamespace = argumentParser.parse_args()
     # log( 1, argumentsNamespace )
 
@@ -133,6 +136,9 @@ def main():
 
     if argumentsNamespace.enable_issues:
         enable_github_issue_tracker( argumentsNamespace.enable_issues )
+
+    if argumentsNamespace.add_stars:
+        add_stars_on_github_repositories( argumentsNamespace.add_stars )
 
     if argumentsNamespace.file:
         pull_requester = PullRequester(
@@ -517,6 +523,31 @@ def is_allowed_to_run():
 
 
 def enable_github_issue_tracker(username):
+    def add_star(index, repository_id):
+        return wrap_text( """
+            update%05d: updateRepository(input:{repositoryId:"%s", hasIssuesEnabled:true}) {
+              repository {
+                 nameWithOwner
+              }
+            }
+        """ % ( index, repository_id ) )
+    run_action_on_all_repositories(username, add_star)
+
+
+def add_stars_on_github_repositories(username):
+    def add_star(index, repository_id):
+        return wrap_text( """
+            update%05d: addStar(input:{starrableId:"%s"}) {
+              clientMutationId
+              starrable {
+                viewerHasStarred
+              }
+            }
+        """ % ( index, repository_id ) )
+    run_action_on_all_repositories(username, add_star)
+
+
+def run_action_on_all_repositories(username, action):
     """ We can only update up to 100 repositories at a time
     otherwise we get 502 bad gateway error from GitHub """
     queryvariables = {
@@ -529,24 +560,18 @@ def enable_github_issue_tracker(username):
         repositories = get_all_user_repositories(queryvariables)
 
         # log('repositories', repositories)
-        _enable_github_issue_tracker(repositories)
+        _enable_github_issue_tracker(repositories, action)
 
         if not queryvariables['hasNextPage']: break
         time.sleep(3)
 
 
-def _enable_github_issue_tracker(repositories):
+def _enable_github_issue_tracker(repositories, action):
     graphqlquery = ""
 
     for index, repository in enumerate(repositories, start=1):
         repository_id = repository[1]
-        graphqlquery += wrap_text( """
-              update%05d: updateRepository(input:{repositoryId:"%s", hasIssuesEnabled:true}) {
-                repository {
-                   nameWithOwner
-                }
-              }
-        """ % ( index, repository_id ) ) + "\n"
+        graphqlquery += action(index, repository_id) + "\n"
 
     graphqlresults = run_graphql_query( headers, wrap_text( """
         mutation UpdateUserRepositories {
