@@ -40,8 +40,10 @@ import os
 import io
 import re
 import json
+import time
 
 import github
+import requests
 import argparse
 import contextlib
 
@@ -64,44 +66,45 @@ from debug_tools.estimated_time_left import progress_info
 PACKAGE_ROOT_DIRECTORY = os.path.dirname( os.path.realpath( __file__ ) )
 CHANNEL_SESSION_FILE = os.path.join( PACKAGE_ROOT_DIRECTORY, "last_session.json" )
 
+headers = {}
 MAXIMUM_WORSPACES_ENTRIES = 100
 
 g_is_already_running = False
-log = getLogger( 127, __name__ )
+log = getLogger( 127, "" )
 
 
 def main():
-    github_token = os.environ.get( 'GITHUBPULLREQUESTS_TOKEN', "" )
-    gitmodules_files = []
-    synced_repositories = False
-    maximum_repositories = 0
+    github_token = os.environ.get( 'GITHUBPULLREQUESTS_TOKEN', "" ).strip()
 
     # https://stackoverflow.com/questions/6382804/how-to-use-getopt-optarg-in-python-how-to-shift
     argumentParser = argparse.ArgumentParser( description='Create Pull Requests, using GitHub API and a list of repositories.' )
 
-    argumentParser.add_argument( "-f", "--file", action="append",
+    argumentParser.add_argument( "-f", "--file", action="append", default=[],
             help="The file with the repositories informations" )
 
-    argumentParser.add_argument( "-t", "--token", action="store",
+    argumentParser.add_argument( "-t", "--token", action="store", default="",
             help="GitHub token with `public_repos` access, or the path "
             "to a file with the Github token in plain text. The only contents "
             "the file can have is the token, optionally with a trailing new line." )
 
-    argumentParser.add_argument( "-mr", "--maximum-repositories", action="store", type=int,
+    argumentParser.add_argument( "-mr", "--maximum-repositories", action="store", type=int, default=0,
             help="The maximum count of repositories/requests to process per file." )
 
-    argumentParser.add_argument( "-c", "--cancel-operation", action="store_true",
+    argumentParser.add_argument( "-c", "--cancel-operation", action="store_true", default=False,
             help="If there is some batch operation running, cancel it as soons as possible." )
 
-    argumentParser.add_argument( "-d", "--dry-run", action="store_true",
+    argumentParser.add_argument( "-d", "--dry-run", action="store_true", default=False,
             help="Do a rehearsal of a performance or procedure instead of the real one "
             "i.e., do not create any pull requests, but simulates/pretends to do so." )
 
-    argumentParser.add_argument( "-s", "--synced-repositories", action="store_true",
+    argumentParser.add_argument( "-s", "--synced-repositories", action="store_true", default=False,
             help="Reports which repositories not Synchronized with Pull Requests. "
             "This also resets/skips any last session saved due old throw/raised exceptions, "
             "because to compute correctly the repositories list, it is required to know all "
             "available repositories." )
+
+    argumentParser.add_argument( "-ei", "--enable-issues", action="store", default="",
+            help="Enable the issue tracker on all repositories for the given user." )
 
     argumentsNamespace = argumentParser.parse_args()
     # log( 1, argumentsNamespace )
@@ -113,23 +116,35 @@ def main():
     if argumentsNamespace.token:
         github_token = argumentsNamespace.token
 
-    if argumentsNamespace.synced_repositories:
-        synced_repositories = argumentsNamespace.synced_repositories
+    if github_token:
+        global headers
+        if os.path.exists( github_token ):
+            with open( github_token, 'r', ) as input_file:
+                github_token = input_file.read()
 
-    if argumentsNamespace.maximum_repositories:
-        maximum_repositories = argumentsNamespace.maximum_repositories
-
-    if argumentsNamespace.file:
-        gitmodules_files = argumentsNamespace.file
+        github_token = github_token.strip()
+        headers = { "Authorization": f"Bearer {github_token}" }
+        log_ratelimit(headers)
 
     else:
-        log.clean( "Error: Missing required command line argument `-f/--file`" )
+        log.clean( "Error: Missing required command line argument `-t/--token`" )
         argumentParser.print_help()
         return
 
-    pull_requester = PullRequester( github_token, maximum_repositories, synced_repositories, argumentsNamespace.dry_run )
-    pull_requester.parse_gitmodules( gitmodules_files )
-    pull_requester.publish_report()
+    if argumentsNamespace.enable_issues:
+        enable_github_issue_tracker( argumentsNamespace.enable_issues )
+
+    if argumentsNamespace.file:
+        pull_requester = PullRequester(
+            github_token,
+            argumentsNamespace.maximum_repositories,
+            argumentsNamespace.synced_repositories,
+            argumentsNamespace.dry_run
+        )
+        pull_requester.parse_gitmodules( argumentsNamespace.file )
+        pull_requester.publish_report()
+
+    log_ratelimit(headers)
 
 
 class PullRequester(object):
@@ -137,10 +152,7 @@ class PullRequester(object):
     def __init__(self, github_token, maximum_repositories=0, synced_repositories=False, is_dry_run=False):
         super(PullRequester, self).__init__()
         self.is_dry_run = is_dry_run
-
-        if os.path.exists( github_token ):
-            with open( github_token, 'r', ) as input_file:
-                github_token = input_file.read()
+        self.github_token = github_token
 
         if synced_repositories:
             self.lastSection = OrderedDict()
@@ -153,7 +165,6 @@ class PullRequester(object):
             except( IOError, ValueError ):
                 self.lastSection = OrderedDict()
 
-        self.github_token = github_token.strip()
         self.maximum_repositories = maximum_repositories
         self.synced_repositories = synced_repositories
 
@@ -503,6 +514,147 @@ def is_allowed_to_run():
 
     g_is_already_running = True
     return True
+
+
+def enable_github_issue_tracker(username):
+    """ We can only update up to 100 repositories at a time
+    otherwise we get 502 bad gateway error from GitHub """
+    queryvariables = {
+        "user": username,
+        "lastItem": None,
+        "items": 100,
+    }
+
+    while True:
+        repositories = get_all_user_repositories(queryvariables)
+
+        # log('repositories', repositories)
+        _enable_github_issue_tracker(repositories)
+
+        if not queryvariables['hasNextPage']: break
+        time.sleep(3)
+
+
+def _enable_github_issue_tracker(repositories):
+    graphqlquery = ""
+
+    for index, repository in enumerate(repositories, start=1):
+        repository_id = repository[1]
+        graphqlquery += wrap_text( """
+              update%05d: updateRepository(input:{repositoryId:"%s", hasIssuesEnabled:true}) {
+                repository {
+                   nameWithOwner
+                }
+              }
+        """ % ( index, repository_id ) ) + "\n"
+
+    graphqlresults = run_graphql_query( headers, wrap_text( """
+        mutation UpdateUserRepositories {
+          %s
+        }
+        """ % graphqlquery )
+    )
+    log('graphqlresults', graphqlresults)
+
+
+def get_all_user_repositories(queryvariables):
+    repositories_found = []
+
+    graphqlquery = wrap_text( """
+        query ListUserRepositories($user: String!, $items: Int!, $lastItem: String) {
+          repositoryOwner(login: $user) {
+            repositories(first: $items, after: $lastItem, orderBy: {field: STARGAZERS, direction: DESC}, ownerAffiliations: [OWNER]) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              nodes {
+                name
+                id
+                isArchived
+              }
+            }
+          }
+        }
+    """ )
+
+    graphqlresults = run_graphql_query( headers, graphqlquery, queryvariables )
+    pageInfo = graphqlresults["data"]["repositoryOwner"]["repositories"]["pageInfo"]
+
+    nodes = graphqlresults["data"]["repositoryOwner"]["repositories"]["nodes"]
+    queryvariables['lastItem'] = pageInfo["endCursor"]
+    queryvariables['hasNextPage'] = pageInfo["hasNextPage"]
+    repositories_found.extend( (item['name'], item['id']) for item in nodes if not item['isArchived'] )
+
+    # log(f"items {nodes} pageInfo {pageInfo}")
+    log(f"items {len(repositories_found)} pageInfo {pageInfo}")
+
+    return repositories_found
+
+
+github_ratelimit_graphql = wrap_text( """
+    rateLimit {
+        limit
+        cost
+        remaining
+        resetAt
+    }
+    viewer {
+        login
+    }
+""" )
+
+
+def log_ratelimit(headers):
+    graphqlresults = run_graphql_query( headers, f"{{{github_ratelimit_graphql}}}" )
+    resultdata = graphqlresults["data"]
+    log(
+        f"{resultdata['viewer']['login']}, "
+        f"limit {resultdata['rateLimit']['remaining']}, "
+        f"cost {resultdata['rateLimit']['cost']}, "
+        f"{resultdata['rateLimit']['remaining']}, "
+        f"{resultdata['rateLimit']['resetAt']}, "
+    )
+
+
+# A simple function to use requests.post to make the API call. Note the json= section.
+# https://developer.github.com/v4/explorer/
+def run_graphql_query(headers, graphqlquery, queryvariables={}, graphql_url="https://api.github.com/graphql"):
+    """ headers { "Authorization": f"Bearer {github_token}" } """
+    # https://github.com/evandrocoan/GithubRepositoryResearcher
+    # https://gist.github.com/gbaman/b3137e18c739e0cf98539bf4ec4366ad
+    request = requests.post( graphql_url, json={'query': graphqlquery, 'variables': queryvariables}, headers=headers )
+    fix_line = lambda line: str(line).replace('\\n', '\n')
+
+    if request.status_code == 200:
+        result = request.json()
+
+        if "data" not in result or "errors" in result:
+            raise Exception( wrap_text( f"""
+                There were errors while processing the query!
+
+                graphqlquery:
+                {fix_line(graphqlquery)}
+
+                queryvariables:
+                {fix_line(queryvariables)}
+
+                errors:
+                {json.dumps( result, indent=2, sort_keys=True )}
+            """ ) )
+
+    else:
+        raise Exception( wrap_text( f"""
+            Query failed to run by returning code of {request.status_code}.
+
+            graphqlquery:
+            {fix_line(graphqlquery)}
+
+            queryvariables:
+            {fix_line(queryvariables)}
+        """ ) )
+
+    return result
 
 
 if __name__ == "__main__":
