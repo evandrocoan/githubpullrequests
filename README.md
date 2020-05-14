@@ -17,7 +17,7 @@ Either clone this repository and run `python setup.py develop` or just use `pip 
 ```
 $ githubpullrequests -h
 usage: githubpullrequests [-h] [-f FILE] [-t TOKEN] [-mr MAXIMUM_REPOSITORIES]
-                          [-c] [-s]
+                          [-c] [-d] [-s] [-ei ENABLE_ISSUES] [-as ADD_STARS]
 
 Create Pull Requests, using GitHub API and a list of repositories.
 
@@ -28,19 +28,27 @@ optional arguments:
                         GitHub token with `public_repos` access, or the path
                         to a file with the Github token in plain text. The
                         only contents the file can have is the token,
-                        optionally with a tralling new line.
+                        optionally with a trailing new line.
   -mr MAXIMUM_REPOSITORIES, --maximum-repositories MAXIMUM_REPOSITORIES
                         The maximum count of repositories/requests to process
                         per file.
   -c, --cancel-operation
                         If there is some batch operation running, cancel it as
                         soons as possible.
+  -d, --dry-run         Do a rehearsal of a performance or procedure instead
+                        of the real one i.e., do not create any pull requests,
+                        but simulates/pretends to do so.
   -s, --synced-repositories
                         Reports which repositories not Synchronized with Pull
                         Requests. This also resets/skips any last session
                         saved due old throw/raised exceptions, because to
                         compute correctly the repositories list, it is
                         required to know all available repositories.
+  -ei ENABLE_ISSUES, --enable-issues ENABLE_ISSUES
+                        Enable the issue tracker on all repositories for the
+                        given user.
+  -as ADD_STARS, --add-stars ADD_STARS
+                        Add a star on all repositories for the given user.
 ```
 
 For example:
