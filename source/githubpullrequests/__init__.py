@@ -109,6 +109,9 @@ def main():
     argumentParser.add_argument( "-as", "--add-stars", action="store", default="",
             help="Add a star on all repositories for the given user." )
 
+    argumentParser.add_argument( "-wa", "--watch-all", action="store", default="",
+            help="Enable watch for all repositories on the given user." )
+
     argumentsNamespace = argumentParser.parse_args()
     # log( 1, argumentsNamespace )
 
@@ -139,6 +142,9 @@ def main():
 
     if argumentsNamespace.add_stars:
         add_stars_on_github_repositories( argumentsNamespace.add_stars )
+
+    if argumentsNamespace.watch_all:
+        watch_all_github_repositories( argumentsNamespace.watch_all )
 
     if argumentsNamespace.file:
         pull_requester = PullRequester(
@@ -541,6 +547,19 @@ def add_stars_on_github_repositories(username):
               clientMutationId
               starrable {
                 viewerHasStarred
+              }
+            }
+        """ % ( index, repository_id ) )
+    run_action_on_all_repositories(username, add_star)
+
+
+def watch_all_github_repositories(username):
+    def add_star(index, repository_id):
+        return wrap_text( """
+            update%05d: updateSubscription(input:{subscribableId:"%s", state:SUBSCRIBED}) {
+              clientMutationId
+              subscribable {
+                viewerSubscription
               }
             }
         """ % ( index, repository_id ) )
