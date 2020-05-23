@@ -59,7 +59,7 @@ from setuptools import setup
 # All in one command:
 #     rm -rf ./dist && python3 setup.py sdist && twine upload dist/* && rm -rf ./dist
 #
-version = '0.2.0'
+version = '0.3.0'
 
 install_requires=[
     'six',

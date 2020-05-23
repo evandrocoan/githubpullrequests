@@ -18,6 +18,7 @@ Either clone this repository and run `python setup.py develop` or just use `pip 
 $ githubpullrequests -h
 usage: githubpullrequests [-h] [-f FILE] [-t TOKEN] [-mr MAXIMUM_REPOSITORIES]
                           [-c] [-d] [-s] [-ei ENABLE_ISSUES] [-as ADD_STARS]
+                          [-wa WATCH_ALL]
 
 Create Pull Requests, using GitHub API and a list of repositories.
 
@@ -49,6 +50,8 @@ optional arguments:
                         given user.
   -as ADD_STARS, --add-stars ADD_STARS
                         Add a star on all repositories for the given user.
+  -wa WATCH_ALL, --watch-all WATCH_ALL
+                        Enable watch for all repositories on the given user.
 ```
 
 For example:
