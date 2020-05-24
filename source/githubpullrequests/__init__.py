@@ -529,7 +529,7 @@ def is_allowed_to_run():
 
 
 def enable_github_issue_tracker(username):
-    def add_star(index, repository_id):
+    def graphql(index, repository_id):
         return wrap_text( """
             update%05d: updateRepository(input:{repositoryId:"%s", hasIssuesEnabled:true}) {
               repository {
@@ -537,11 +537,11 @@ def enable_github_issue_tracker(username):
               }
             }
         """ % ( index, repository_id ) )
-    run_action_on_all_repositories(username, add_star)
+    run_action_on_all_repositories(username, graphql)
 
 
 def add_stars_on_github_repositories(username):
-    def add_star(index, repository_id):
+    def graphql(index, repository_id):
         return wrap_text( """
             update%05d: addStar(input:{starrableId:"%s"}) {
               clientMutationId
@@ -550,11 +550,11 @@ def add_stars_on_github_repositories(username):
               }
             }
         """ % ( index, repository_id ) )
-    run_action_on_all_repositories(username, add_star)
+    run_action_on_all_repositories(username, graphql)
 
 
 def watch_all_github_repositories(username):
-    def add_star(index, repository_id):
+    def graphql(index, repository_id):
         return wrap_text( """
             update%05d: updateSubscription(input:{subscribableId:"%s", state:SUBSCRIBED}) {
               clientMutationId
@@ -563,7 +563,7 @@ def watch_all_github_repositories(username):
               }
             }
         """ % ( index, repository_id ) )
-    run_action_on_all_repositories(username, add_star)
+    run_action_on_all_repositories(username, graphql)
 
 
 def run_action_on_all_repositories(username, action):
@@ -579,13 +579,13 @@ def run_action_on_all_repositories(username, action):
         repositories = get_all_user_repositories(queryvariables)
 
         # log('repositories', repositories)
-        _enable_github_issue_tracker(repositories, action)
+        _run_graphql_action(repositories, action)
 
         if not queryvariables['hasNextPage']: break
         time.sleep(3)
 
 
-def _enable_github_issue_tracker(repositories, action):
+def _run_graphql_action(repositories, action):
     graphqlquery = ""
 
     for index, repository in enumerate(repositories, start=1):
