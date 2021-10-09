@@ -51,7 +51,7 @@ from setuptools import setup
 # keyring set https://upload.pypi.org/legacy/ your-username
 #
 # Run this to build the `dist/PACKAGE_NAME-xxx.tar.gz` file
-#     rm -r ./dist && python setup.py sdist
+#     rm -rf ./dist && python setup.py sdist
 #
 # Run this to build & upload it to `pypi`, type addons_zz when prompted.
 #     twine upload dist/*
@@ -59,7 +59,7 @@ from setuptools import setup
 # All in one command:
 #     rm -rf ./dist && python3 setup.py sdist && twine upload dist/* && rm -rf ./dist
 #
-version = '0.3.0'
+version = '0.3.2'
 
 install_requires=[
     'six',

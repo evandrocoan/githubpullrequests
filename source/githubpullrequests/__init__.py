@@ -88,6 +88,7 @@ def main():
             "the file can have is the token, optionally with a trailing new line." )
 
     argumentParser.add_argument( "-mr", "--maximum-repositories", action="store", type=int, default=0,
+            metavar="number",
             help="The maximum count of repositories/requests to process per file." )
 
     argumentParser.add_argument( "-c", "--cancel-operation", action="store_true", default=False,
@@ -103,13 +104,13 @@ def main():
             "because to compute correctly the repositories list, it is required to know all "
             "available repositories." )
 
-    argumentParser.add_argument( "-ei", "--enable-issues", action="store", default="",
+    argumentParser.add_argument( "-ei", "--enable-issues", action="store", default="", metavar="targetusername",
             help="Enable the issue tracker on all repositories for the given user." )
 
-    argumentParser.add_argument( "-as", "--add-stars", action="store", default="",
+    argumentParser.add_argument( "-as", "--add-stars", action="store", default="", metavar="targetusername",
             help="Add a star on all repositories for the given user." )
 
-    argumentParser.add_argument( "-wa", "--watch-all", action="store", default="",
+    argumentParser.add_argument( "-wa", "--watch-all", action="store", default="", metavar="targetusername",
             help="Enable watch for all repositories on the given user." )
 
     argumentsNamespace = argumentParser.parse_args()
@@ -358,6 +359,12 @@ class PullRequester(object):
                             '{}:{}'.format( upstream_user, upstream_branch ),
                             False
                         )
+
+                # avoid new rate limit:
+                # You have exceeded a secondary rate limit and have been temporarily blocked
+                # from content creation. Please retry your request again later.', 'documentation_url':
+                # 'https://docs.github.com/rest/overview/resources-in-the-rest-api#secondary-rate-limits
+                time.sleep(3)
 
                 # Then play with your Github objects
                 successful_resquests += 1
