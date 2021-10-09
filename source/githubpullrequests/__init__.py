@@ -229,15 +229,23 @@ class PullRequester(object):
                 self._save_data( self.request_index - 1 )
                 raise
 
-            self._save_data( 0 )
+            self._save_data( 0, gitmodules_file )
 
         free_mutex_lock()
 
-    def _save_data(self, index):
+    def _save_data(self, index, gitmodules_file):
         if not self.last_module_file: return
-        self.lastSection[self.last_module_file] = index
 
-        move_to_dict_beginning( self.lastSection, self.last_module_file )
+        if index:
+            self._save_data2(index, self.last_module_file)
+        else:
+            for filename in gitmodules_file:
+                self._save_data2(0, filename)
+
+    def _save_data2(self, index, file_name):
+        self.lastSection[file_name] = index
+        move_to_dict_beginning( self.lastSection, file_name )
+
         while len( self.lastSection ) > MAXIMUM_WORSPACES_ENTRIES:
             pop_dict_last_item( self.lastSection )
 
